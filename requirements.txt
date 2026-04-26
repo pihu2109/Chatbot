@@ -13,3 +13,5 @@ pypdf
 rank-bm25
 torch
 scikit-learn
+protobuf==4.25.3
+opentelemetry-exporter-otlp==1.21.0
