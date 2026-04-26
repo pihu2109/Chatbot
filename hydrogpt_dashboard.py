@@ -1,5 +1,7 @@
 import os
 import re
+import urllib.request
+import zipfile
 from collections import defaultdict
 from importlib import import_module
 from pathlib import Path
@@ -65,6 +67,43 @@ def _resolve_chroma_class():
 
 HuggingFaceEmbeddings = _resolve_hf_embeddings_class()
 Chroma = _resolve_chroma_class()
+
+
+def download_and_extract_index() -> None:
+    """Download and extract hydro_db from remote URL if it doesn't exist locally."""
+    if DB_DIR.exists():
+        return  # Already exists, nothing to do
+    
+    # Try to get URL from Streamlit secrets first, then environment
+    index_url = None
+    try:
+        index_url = st.secrets.get("INDEX_ZIP_URL", "").strip()
+    except Exception:
+        pass
+    
+    if not index_url:
+        index_url = os.getenv("INDEX_ZIP_URL", "").strip()
+    
+    if not index_url:
+        # No URL provided, let get_vectorstore() raise the proper error
+        return
+    
+    try:
+        # Download the zip file
+        zip_path = Path("./hydro_db_temp.zip")
+        with st.spinner("Downloading vector index... This may take a minute."):
+            urllib.request.urlretrieve(index_url, str(zip_path))
+        
+        # Extract it
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(".")
+        
+        # Clean up temp zip
+        zip_path.unlink()
+        
+        st.success("Vector index downloaded and extracted successfully.")
+    except Exception as e:
+        st.warning(f"Could not download index from {index_url}: {e}. App will attempt to run without it.")
 
 
 def tokenize(text: str) -> List[str]:
@@ -459,6 +498,9 @@ def render_sources(sources: List[Dict[str, str]], key_prefix: str) -> None:
 # -- Main ---------------------------------------------------------------------
 def main() -> None:
     st.set_page_config(page_title="Mai-T GPT", page_icon="💧", layout="wide")
+    
+    # Download vector index if missing
+    download_and_extract_index()
 
     with st.sidebar:
         st.title("💧 Mai-T GPT")
