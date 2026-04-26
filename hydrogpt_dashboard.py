@@ -176,7 +176,15 @@ def get_indexed_chunk_count() -> int:
 def get_lexical_corpus() -> List[Dict[str, Any]]:
     """Load all indexed chunks once for lexical retrieval scoring."""
     collection = get_vectorstore()._collection
-    raw = collection.get(include=["documents", "metadatas"])
+    try:
+        raw = collection.get(include=["documents", "metadatas"])
+    except Exception as e:
+        st.warning(
+            "Lexical corpus could not be loaded from Chroma. "
+            "Falling back to semantic retrieval only. "
+            f"Details: {e}"
+        )
+        return []
     docs = raw.get("documents", [])
     metas = raw.get("metadatas", [])
 
