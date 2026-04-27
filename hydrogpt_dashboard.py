@@ -106,6 +106,47 @@ def download_and_extract_index() -> None:
         st.warning(f"Could not download index from {index_url}: {e}. App will attempt to run without it.")
 
 
+def _read_index_zip_url() -> str:
+    """Read index zip URL from secrets/env."""
+    try:
+        url = (st.secrets.get("INDEX_ZIP_URL") or "").strip()
+        if url:
+            return url
+    except Exception:
+        pass
+    return os.getenv("INDEX_ZIP_URL", "").strip()
+
+
+def redownload_index() -> bool:
+    """Delete local hydro_db and fetch a fresh copy from INDEX_ZIP_URL."""
+    index_url = _read_index_zip_url()
+    if not index_url:
+        return False
+
+    try:
+        if DB_DIR.exists():
+            for p in DB_DIR.rglob("*"):
+                if p.is_file():
+                    p.unlink(missing_ok=True)
+            for p in sorted(DB_DIR.rglob("*"), reverse=True):
+                if p.is_dir():
+                    p.rmdir()
+            DB_DIR.rmdir()
+    except Exception:
+        pass
+
+    try:
+        zip_path = Path("./hydro_db_temp.zip")
+        with st.spinner("Refreshing vector index from remote storage..."):
+            urllib.request.urlretrieve(index_url, str(zip_path))
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(".")
+        zip_path.unlink(missing_ok=True)
+        return DB_DIR.exists()
+    except Exception:
+        return False
+
+
 def tokenize(text: str) -> List[str]:
     return re.findall(r"[a-zA-Z0-9]{3,}", text.lower())
 
@@ -154,14 +195,55 @@ def get_embeddings() -> Any:
 @st.cache_resource(show_spinner=False)
 def get_vectorstore() -> Any:
     if not DB_DIR.exists():
+        # Try fetching the index artifact on-demand in Cloud environments.
+        download_and_extract_index()
+        if not DB_DIR.exists() and redownload_index():
+            st.info("Vector index downloaded from INDEX_ZIP_URL.")
+
+    if not DB_DIR.exists():
         raise FileNotFoundError(
-            f"Vector store not found at '{DB_DIR}'. Run hydrogpt_indexer.py first."
+            f"Vector store not found at '{DB_DIR}'. "
+            "Set INDEX_ZIP_URL in Streamlit Secrets to a valid hydro_db.zip direct URL."
         )
-    return Chroma(
-        persist_directory=str(DB_DIR),
-        embedding_function=get_embeddings(),
-        collection_metadata={"hnsw:space": "cosine"},
-    )
+    try:
+        vs = Chroma(
+            persist_directory=str(DB_DIR),
+            embedding_function=get_embeddings(),
+            collection_metadata={"hnsw:space": "cosine"},
+        )
+        # Touch the collection and retrieval path so broken HNSW indexes fail fast.
+        _ = int(vs._collection.count())
+        _ = vs.max_marginal_relevance_search(
+            "index health check",
+            k=1,
+            fetch_k=4,
+            lambda_mult=0.5,
+        )
+        return vs
+    except Exception as e:
+        if redownload_index():
+            try:
+                vs = Chroma(
+                    persist_directory=str(DB_DIR),
+                    embedding_function=get_embeddings(),
+                    collection_metadata={"hnsw:space": "cosine"},
+                )
+                _ = int(vs._collection.count())
+                _ = vs.max_marginal_relevance_search(
+                    "index health check",
+                    k=1,
+                    fetch_k=4,
+                    lambda_mult=0.5,
+                )
+                st.info("Vector index refreshed from INDEX_ZIP_URL.")
+                return vs
+            except Exception:
+                pass
+        raise RuntimeError(
+            "Unable to load hydro_db. The downloaded index appears incompatible or corrupted. "
+            "Rebuild hydro_db locally with Python 3.11 and upload a fresh hydro_db.zip. "
+            f"Details: {e}"
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -272,6 +354,7 @@ def retrieve(query: str, k: int, use_reranking: bool = True) -> List[Dict[str, A
     query_variants = expand_query(query)
 
     all_semantic = []
+    semantic_errors: List[str] = []
     for q_var in query_variants:
         try:
             semantic_docs = vs.max_marginal_relevance_search(
@@ -281,8 +364,8 @@ def retrieve(query: str, k: int, use_reranking: bool = True) -> List[Dict[str, A
                 lambda_mult=0.5,
             )
             all_semantic.extend(semantic_docs)
-        except Exception:
-            pass
+        except Exception as e:
+            semantic_errors.append(str(e))
 
     semantic_by_content = {}
     for d in all_semantic:
@@ -300,6 +383,14 @@ def retrieve(query: str, k: int, use_reranking: bool = True) -> List[Dict[str, A
     acronym_terms = re.findall(r"\b[A-Z]{2,8}\b", query)
 
     corpus = get_lexical_corpus()
+
+    if not sem_results and not corpus and semantic_errors:
+        raise RuntimeError(
+            "Index retrieval failed. hydro_db was found but cannot be searched in this environment. "
+            "Upload a fresh hydro_db.zip built with the same code/dependency versions. "
+            f"Details: {semantic_errors[0]}"
+        )
+
     lexical_scored: List[tuple[float, Dict[str, Any]]] = []
 
     for row in corpus:
@@ -506,7 +597,7 @@ def render_sources(sources: List[Dict[str, str]], key_prefix: str) -> None:
 # -- Main ---------------------------------------------------------------------
 def main() -> None:
     st.set_page_config(page_title="Mai-T GPT", page_icon="💧", layout="wide")
-    
+
     # Download vector index if missing
     download_and_extract_index()
 
