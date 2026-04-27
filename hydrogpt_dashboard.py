@@ -87,7 +87,25 @@ def _extract_index_zip(zip_path: Path) -> bool:
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(tmp_extract)
+            # Normalize zip entry separators so Windows-created archives work on Linux.
+            for info in zip_ref.infolist():
+                entry = info.filename.replace("\\", "/").lstrip("/")
+                if not entry:
+                    continue
+
+                target = (tmp_extract / entry).resolve()
+                try:
+                    target.relative_to(tmp_extract.resolve())
+                except Exception:
+                    continue
+
+                if info.is_dir() or entry.endswith("/"):
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zip_ref.open(info, "r") as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
 
         # Some hosting flows accidentally produce zip-inside-zip. Unpack one level.
         if not any(tmp_extract.rglob("chroma.sqlite3")):
@@ -163,8 +181,9 @@ def download_and_extract_index() -> None:
         if ok:
             st.success("Vector index downloaded and extracted successfully.")
         else:
+            file_hint = index_url.split("?")[0].rsplit("/", 1)[-1]
             st.warning(
-                "Downloaded hydro_db.zip but could not find a valid Chroma layout. "
+                f"Downloaded {file_hint} but could not find a valid Chroma layout. "
                 "Expected chroma.sqlite3 and index folders."
             )
     except Exception as e:
