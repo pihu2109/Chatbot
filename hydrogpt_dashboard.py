@@ -74,9 +74,8 @@ def _is_valid_db_dir(path: Path) -> bool:
     """Basic structural check for a persisted Chroma directory."""
     if not path.exists() or not path.is_dir():
         return False
-    if not (path / "chroma.sqlite3").exists():
-        return False
-    return any(p.is_dir() for p in path.iterdir())
+    # Some Chroma builds can persist mostly in sqlite; do not require subfolders here.
+    return (path / "chroma.sqlite3").exists()
 
 
 def _extract_index_zip(zip_path: Path) -> bool:
