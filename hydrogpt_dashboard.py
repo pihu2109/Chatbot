@@ -90,10 +90,20 @@ def _extract_index_zip(zip_path: Path) -> bool:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(tmp_extract)
 
-        nested_db = tmp_extract / "hydro_db"
-        candidate = nested_db if nested_db.exists() else tmp_extract
+        # Support multiple layouts: hydro_db/*, flat root, or nested parent folders.
+        candidates: List[Path] = []
+        direct_nested = tmp_extract / "hydro_db"
+        if direct_nested.exists():
+            candidates.append(direct_nested)
+        candidates.append(tmp_extract)
 
-        if not _is_valid_db_dir(candidate):
+        for sqlite_path in tmp_extract.rglob("chroma.sqlite3"):
+            parent = sqlite_path.parent
+            if parent not in candidates:
+                candidates.append(parent)
+
+        candidate = next((c for c in candidates if _is_valid_db_dir(c)), None)
+        if candidate is None:
             return False
 
         if DB_DIR.exists():
