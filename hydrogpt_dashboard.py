@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import urllib.request
 import zipfile
 from collections import defaultdict
@@ -69,6 +70,40 @@ HuggingFaceEmbeddings = _resolve_hf_embeddings_class()
 Chroma = _resolve_chroma_class()
 
 
+def _is_valid_db_dir(path: Path) -> bool:
+    """Basic structural check for a persisted Chroma directory."""
+    if not path.exists() or not path.is_dir():
+        return False
+    if not (path / "chroma.sqlite3").exists():
+        return False
+    return any(p.is_dir() for p in path.iterdir())
+
+
+def _extract_index_zip(zip_path: Path) -> bool:
+    """Extract hydro_db zip into DB_DIR, handling common zip layouts."""
+    tmp_extract = Path("./_hydro_extract_tmp")
+    if tmp_extract.exists():
+        shutil.rmtree(tmp_extract, ignore_errors=True)
+    tmp_extract.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(tmp_extract)
+
+        nested_db = tmp_extract / "hydro_db"
+        candidate = nested_db if nested_db.exists() else tmp_extract
+
+        if not _is_valid_db_dir(candidate):
+            return False
+
+        if DB_DIR.exists():
+            shutil.rmtree(DB_DIR, ignore_errors=True)
+        shutil.move(str(candidate), str(DB_DIR))
+        return _is_valid_db_dir(DB_DIR)
+    finally:
+        shutil.rmtree(tmp_extract, ignore_errors=True)
+
+
 def download_and_extract_index() -> None:
     """Download and extract hydro_db from remote URL if it doesn't exist locally."""
     if DB_DIR.exists():
@@ -93,15 +128,17 @@ def download_and_extract_index() -> None:
         zip_path = Path("./hydro_db_temp.zip")
         with st.spinner("Downloading vector index... This may take a minute."):
             urllib.request.urlretrieve(index_url, str(zip_path))
-        
-        # Extract it
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(".")
-        
-        # Clean up temp zip
-        zip_path.unlink()
-        
-        st.success("Vector index downloaded and extracted successfully.")
+
+        ok = _extract_index_zip(zip_path)
+        zip_path.unlink(missing_ok=True)
+
+        if ok:
+            st.success("Vector index downloaded and extracted successfully.")
+        else:
+            st.warning(
+                "Downloaded hydro_db.zip but could not find a valid Chroma layout. "
+                "Expected chroma.sqlite3 and index folders."
+            )
     except Exception as e:
         st.warning(f"Could not download index from {index_url}: {e}. App will attempt to run without it.")
 
@@ -125,13 +162,7 @@ def redownload_index() -> bool:
 
     try:
         if DB_DIR.exists():
-            for p in DB_DIR.rglob("*"):
-                if p.is_file():
-                    p.unlink(missing_ok=True)
-            for p in sorted(DB_DIR.rglob("*"), reverse=True):
-                if p.is_dir():
-                    p.rmdir()
-            DB_DIR.rmdir()
+            shutil.rmtree(DB_DIR, ignore_errors=True)
     except Exception:
         pass
 
@@ -139,10 +170,9 @@ def redownload_index() -> bool:
         zip_path = Path("./hydro_db_temp.zip")
         with st.spinner("Refreshing vector index from remote storage..."):
             urllib.request.urlretrieve(index_url, str(zip_path))
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(".")
+        ok = _extract_index_zip(zip_path)
         zip_path.unlink(missing_ok=True)
-        return DB_DIR.exists()
+        return ok
     except Exception:
         return False
 
