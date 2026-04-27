@@ -29,6 +29,10 @@ GEMINI_MODEL_FALLBACKS = [
     "gemini-1.5-flash",
 ]
 
+ACCENT_BLUE = "#2d6bff"
+ACCENT_BLUE_SOFT = "rgba(45, 107, 255, 0.16)"
+ACCENT_BLUE_BORDER = "rgba(45, 107, 255, 0.28)"
+
 REFINE_PROMPT = ChatPromptTemplate.from_template(
     """You are HydroGPT, an expert research assistant for hydro-climate documents.
 
@@ -770,17 +774,196 @@ def render_sources(sources: List[Dict[str, str]], key_prefix: str) -> None:
 
 # -- Main ---------------------------------------------------------------------
 def main() -> None:
-    st.set_page_config(page_title="Mai-T GPT", page_icon="💧", layout="wide")
+    st.set_page_config(page_title="Mai-T GPT", page_icon=" ", layout="wide")
+
+    st.markdown(
+        f"""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Glacial+Indifference:wght@400;700&display=swap');
+
+        .stApp {{
+            background: linear-gradient(180deg, #090d16 0%, #0b111c 100%);
+            font-family: 'Glacial Indifference', 'Segoe UI', sans-serif;
+        }}
+
+        .stApp * {{
+            font-family: 'Glacial Indifference', 'Segoe UI', sans-serif;
+        }}
+
+        [data-testid="stSidebar"] {{
+            background: linear-gradient(180deg, #202532 0%, #171b25 100%);
+        }}
+
+        [data-testid="stSidebar"] hr {{
+            display: none !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] div[role="slider"] {{
+            background: {ACCENT_BLUE} !important;
+            border-color: {ACCENT_BLUE} !important;
+            width: 12px !important;
+            height: 12px !important;
+            min-width: 12px !important;
+            min-height: 12px !important;
+            margin-top: -5px !important;
+            border-width: 2px !important;
+            border-style: solid !important;
+            border-radius: 999px !important;
+            box-shadow: 0 0 0 2px rgba(45, 107, 255, 0.22) !important;
+            z-index: 3 !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] {{
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div:first-child {{
+            height: 1px !important;
+            min-height: 4px !important;
+            max-height: 4px !important;
+            border-radius: 999px !important;
+            padding: 0 !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div:first-child {{
+            background: {ACCENT_BLUE} !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div:first-child > div {{
+            background: {ACCENT_BLUE} !important;
+            height: 1px !important;
+            min-height: 1px !important;
+            max-height: 1px !important;
+            border-radius: 999px !important;
+            padding: 0 !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div:first-child > div:first-child {{
+            background: {ACCENT_BLUE} !important;
+            height: 1px !important;
+            min-height: 1px !important;
+            max-height: 1px !important;
+            border-radius: 999px !important;
+            padding: 0 !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div {{
+            height: 1px !important;
+            min-height: 1px !important;
+            max-height: 1px !important;
+        }}
+
+        /* Keep label row clear of the slider values. */
+        [data-testid="stSidebar"] .stSlider label {{
+            margin-bottom: 0.6rem !important;
+            display: inline-block !important;
+        }}
+
+        /* Move the help '?' icon slightly up and to the right. */
+        [data-testid="stSidebar"] .stSlider [data-testid="stTooltipIcon"] {{
+            position: relative !important;
+            top: -20px !important;
+            left: 140px !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="input"] {{
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-baseweb="input"] input {{
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #8eb8ff !important;
+            font-weight: 500 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }}
+
+        /* Hide the min/max numeric chips under the slider to avoid blue boxes. */
+        [data-testid="stSidebar"] .stSlider [data-baseweb="input"] {{
+            display: none !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider [data-testid="stNumberInput"] {{
+            display: none !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider input[type="number"] {{
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #075ed9 !important;
+            -webkit-text-fill-color: #075ed9 !important;
+        }}
+
+        [data-testid="stSidebar"] .stSlider input[type="number"]:focus {{
+            outline: none !important;
+            box-shadow: none !important;
+            border: none !important;
+        }}
+
+        [data-testid="stSidebar"] .stButton button {{
+            background: {ACCENT_BLUE_SOFT};
+            color: #eaf1ff;
+            border: 1px solid {ACCENT_BLUE_BORDER};
+        }}
+
+        [data-testid="stSidebar"] .stButton button:hover {{
+            background: rgba(45, 107, 255, 0.24);
+            border-color: rgba(45, 107, 255, 0.42);
+        }}
+
+        div[data-testid="stTextInputRootElement"] input {{
+            border-radius: 18px !important;
+            border: 1px solid {ACCENT_BLUE_BORDER} !important;
+            background: #121826 !important;
+            color: #eef4ff !important;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.18) !important;
+            min-height: 3rem;
+            padding-left: 0.9rem !important;
+        }}
+
+        div[data-testid="stFormSubmitButton"] button {{
+            border-radius: 14px !important;
+            min-height: 3rem !important;
+            background: {ACCENT_BLUE_SOFT} !important;
+            border: 1px solid {ACCENT_BLUE_BORDER} !important;
+            color: #eaf1ff !important;
+        }}
+
+        div[data-testid="stFormSubmitButton"] button:hover {{
+            background: rgba(45, 107, 255, 0.24) !important;
+            border-color: rgba(45, 107, 255, 0.42) !important;
+        }}
+
+        div[data-testid="stForm"] {{
+            border: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+        }}
+
+        [data-testid="stChatMessage"] {{
+            max-width: 1000px;
+            margin-left: auto;
+            margin-right: auto;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Download vector index if missing
     download_and_extract_index()
 
     with st.sidebar:
-        st.title("💧 Mai-T GPT")
+        st.title("Mai-T GPT")
         st.caption("Retrieval-grounded RAG assistant for hydro-climate PDFs")
-        st.divider()
-
-        st.divider()
         top_k = st.slider(
             "Chunks retrieved (Top-K)",
             2,
@@ -797,10 +980,46 @@ def main() -> None:
             st.session_state.pop("messages", None)
             st.rerun()
 
-    st.header("Ask your documents anything")
-
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    # Empty-state composition: vertically center input with left-aligned heading above it.
+    if len(st.session_state.messages) == 0:
+        st.markdown("<div style='height: 7vh;'></div>", unsafe_allow_html=True)
+
+    # Keep heading and composer in the same wide container so their left edges align.
+    composer_query = ""
+    c_left, c_mid, c_right = st.columns([0.03, 0.94, 0.03], gap="small")
+    with c_mid:
+        st.markdown(
+            """
+            <div style="text-align: left; padding: 0.1rem 0 0 0;">
+                <div style="font-size: clamp(1.8rem, 2.6vw, 2.7rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.08; margin-bottom: 0.1rem;">
+                    Hi there
+                </div>
+                <div style="font-size: clamp(2.15rem, 3.0vw, 3.1rem); font-weight: 400; letter-spacing: -0.03em; line-height: 1.05;">
+                    How can I help you?
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Keep approximately 1 cm vertical gap between heading and composer.
+        st.markdown("<div style='height: 1cm;'></div>", unsafe_allow_html=True)
+
+        # Custom composer placed directly under heading (st.chat_input is fixed near page bottom).
+        with st.form("query_form", clear_on_submit=True):
+            q_col, send_col = st.columns([0.96, 0.04], gap="small")
+            with q_col:
+                composer_query = st.text_input(
+                    "Ask",
+                    value="",
+                    placeholder="Type in your query here...",
+                    label_visibility="collapsed",
+                )
+            with send_col:
+                submitted = st.form_submit_button("➤", use_container_width=True)
 
     for idx, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
@@ -808,7 +1027,7 @@ def main() -> None:
             if msg["role"] == "assistant" and msg.get("sources"):
                 render_sources(msg["sources"], key_prefix=f"hist_{idx}")
 
-    question = st.chat_input("Ask a question about your documents")
+    question = composer_query.strip() if submitted and composer_query.strip() else ""
     if not question:
         return
 
