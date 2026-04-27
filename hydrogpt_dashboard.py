@@ -30,19 +30,36 @@ GEMINI_MODEL_FALLBACKS = [
 ]
 
 REFINE_PROMPT = ChatPromptTemplate.from_template(
-    """You are a strict retrieval-grounded answer refiner.
+    """You are HydroGPT, an expert research assistant for hydro-climate documents.
 
-Use ONLY the provided extracted answer and evidence lines. Do not invent values.
-If the question asks for numeric values (baseline, increase, expected value), return exact numbers and units if present.
-If exact numbers are unavailable, say that clearly and summarize available related evidence.
+Rules:
+1) Use ONLY the provided evidence blocks.
+2) Do not invent facts, numeric values, years, or acronyms.
+3) Rewrite in clear academic language; do not paste long raw chunks.
+4) If evidence is insufficient or ambiguous, say that explicitly.
+5) For numeric questions, preserve exact values and units from evidence.
+
+Required output structure:
+Short answer:
+<2-4 sentence direct response>
+
+Explanation:
+<1 short paragraph that explains why this answer follows from the evidence>
+
+Evidence:
+- <bullet 1>
+- <bullet 2>
+- <bullet 3 if available>
+
+Sources: <comma-separated source filenames used>
 
 Question:
 {question}
 
-Extracted Answer:
+Draft answer:
 {base_answer}
 
-Evidence:
+Evidence blocks:
 {evidence}
 """
 )
@@ -399,7 +416,7 @@ def get_llm(api_key: str):
                 self._clients[model_name] = ChatGoogleGenerativeAI(
                     model=model_name,
                     google_api_key=self.key,
-                    temperature=0.0,
+                    temperature=0.2,
                 )
             return self._clients[model_name]
 
@@ -594,13 +611,97 @@ def extractive_answer(question: str, chunks: List[Dict[str, Any]]) -> str:
 
     scored_sentences.sort(key=lambda item: item[0], reverse=True)
     top = scored_sentences[:3]
-    answer = f"**Answer:** {top[0][1]}"
-    if len(top) > 1:
-        answer += "\n\n**Supporting details:**\n"
-        for idx, (_, sentence, _) in enumerate(top[1:], 1):
-            answer += f"{idx}. {sentence}\n"
+    best, best_src = top[0][1], top[0][2]
+    detail_lines = [sentence for _, sentence, _ in top[1:]]
     sources = ", ".join(dict.fromkeys(src for _, _, src in top))
-    return f"{answer}\n\n*Sources: {sources}*"
+
+    response = f"{best}"
+    if detail_lines:
+        response += "\n\nEvidence\n"
+        for line in detail_lines:
+            response += f"- {line}\n"
+    response += f"\nSources: {sources}"
+    if best_src and best_src not in sources:
+        response += f", {best_src}"
+    return response
+
+
+def format_evidence_blocks(chunks: List[Dict[str, Any]], max_chunks: int = 6) -> str:
+    """Create compact, high-signal evidence blocks for LLM answer synthesis."""
+    lines: List[str] = []
+    for idx, c in enumerate(chunks[:max_chunks], 1):
+        src = Path(c.get("source", "")).name or "unknown_source"
+        snippet = " ".join((c.get("content") or "").split())
+        snippet = snippet[:550]
+        lines.append(f"[{idx}] ({src}) {snippet}")
+    return "\n".join(lines)
+
+
+def rank_evidence_sentences(question: str, chunks: List[Dict[str, Any]], max_items: int = 5) -> List[Dict[str, str]]:
+    """Rank sentence-level evidence for structured fallback answers."""
+    q_tokens = set(tokenize(question))
+    acronym_terms = re.findall(r"\b[A-Z]{2,8}\b", question)
+    scored: List[tuple[float, str, str]] = []
+
+    for chunk in chunks[:8]:
+        source = Path(chunk.get("source", "")).name
+        sentences = re.split(r"(?<=[.!?])\s+", chunk.get("content", ""))
+        for sentence in sentences:
+            sent = sentence.strip()
+            if len(sent) < 25:
+                continue
+            sent_tokens = set(tokenize(sent))
+            score = float(len(q_tokens.intersection(sent_tokens)) * 3.0)
+            if any(acr.lower() in sent.lower() for acr in acronym_terms):
+                score += 5.0
+            if re.search(r"\d+(?:\.\d+)?", sent):
+                score += 1.5
+            if score > 0:
+                scored.append((score, sent, source))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected: List[Dict[str, str]] = []
+    seen = set()
+    for _, sent, src in scored:
+        key = sent.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append({"sentence": sent, "source": src})
+        if len(selected) >= max_items:
+            break
+    return selected
+
+
+def build_structured_fallback(question: str, chunks: List[Dict[str, Any]]) -> str:
+    """Produce a readable, explanation-first answer when LLM refinement is unavailable."""
+    ranked = rank_evidence_sentences(question, chunks, max_items=5)
+    if not ranked:
+        return (
+            "Short answer:\n"
+            "I found relevant documents, but there is not enough high-confidence evidence to answer this precisely.\n\n"
+            "Explanation:\n"
+            "Try asking with a more specific scope (for example: scenario, epoch, region, table/figure, or metric name).\n\n"
+            "Sources: unavailable"
+        )
+
+    short_answer = ranked[0]["sentence"]
+    explanation_bits = [item["sentence"] for item in ranked[1:3]]
+    explanation = " ".join(explanation_bits) if explanation_bits else (
+        "This conclusion is based on the highest-overlap evidence retrieved for your question."
+    )
+
+    evidence_lines = "\n".join(
+        f"- {item['sentence']} ({item['source']})" for item in ranked[:4]
+    )
+    sources = ", ".join(dict.fromkeys(item["source"] for item in ranked if item["source"]))
+
+    return (
+        f"Short answer:\n{short_answer}\n\n"
+        f"Explanation:\n{explanation}\n\n"
+        f"Evidence:\n{evidence_lines}\n\n"
+        f"Sources: {sources or 'unknown'}"
+    )
 
 
 def generate_answer(question: str, chunks: List[Dict[str, Any]], llm=None) -> str:
@@ -617,28 +718,24 @@ def generate_answer(question: str, chunks: List[Dict[str, Any]], llm=None) -> st
         return base_answer
 
     if llm is None:
-        return base_answer
+        return build_structured_fallback(question, chunks)
 
-    evidence_lines = []
-    for c in chunks[:5]:
-        src = Path(c["source"]).name
-        snippet = c["content"].replace("\n", " ").strip()
-        evidence_lines.append(f"[{src}] {snippet[:350]}")
+    evidence_payload = format_evidence_blocks(chunks, max_chunks=6)
 
     try:
         messages = REFINE_PROMPT.format_messages(
             question=question,
             base_answer=base_answer,
-            evidence="\n".join(evidence_lines),
+            evidence=evidence_payload,
         )
         response = llm.invoke(messages)
         refined = str(getattr(response, "content", "")).strip() if response is not None else ""
-        if refined:
+        if refined and len(refined) > 60 and "short answer" in refined.lower():
             return refined
     except Exception:
         pass
 
-    return base_answer
+    return build_structured_fallback(question, chunks)
 
 
 def dedup_sources(chunks: List[Dict[str, Any]]) -> List[Dict[str, str]]:
