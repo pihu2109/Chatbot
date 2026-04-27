@@ -89,12 +89,31 @@ def _extract_index_zip(zip_path: Path) -> bool:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(tmp_extract)
 
+        # Some hosting flows accidentally produce zip-inside-zip. Unpack one level.
+        if not any(tmp_extract.rglob("chroma.sqlite3")):
+            nested_archives = list(tmp_extract.rglob("*.zip"))
+            if nested_archives:
+                nested_tmp = tmp_extract / "_nested_extract"
+                nested_tmp.mkdir(parents=True, exist_ok=True)
+                try:
+                    with zipfile.ZipFile(nested_archives[0], "r") as nested_ref:
+                        nested_ref.extractall(nested_tmp)
+                except Exception:
+                    pass
+
         # Support multiple layouts: hydro_db/*, flat root, or nested parent folders.
         candidates: List[Path] = []
         direct_nested = tmp_extract / "hydro_db"
         if direct_nested.exists():
             candidates.append(direct_nested)
         candidates.append(tmp_extract)
+
+        nested_tmp = tmp_extract / "_nested_extract"
+        direct_nested_2 = nested_tmp / "hydro_db"
+        if direct_nested_2.exists():
+            candidates.append(direct_nested_2)
+        if nested_tmp.exists():
+            candidates.append(nested_tmp)
 
         for sqlite_path in tmp_extract.rglob("chroma.sqlite3"):
             parent = sqlite_path.parent
