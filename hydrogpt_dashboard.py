@@ -34,26 +34,23 @@ ACCENT_BLUE_SOFT = "rgba(45, 107, 255, 0.16)"
 ACCENT_BLUE_BORDER = "rgba(45, 107, 255, 0.28)"
 
 REFINE_PROMPT = ChatPromptTemplate.from_template(
-    """You are HydroGPT, an expert research assistant for hydro-climate documents.
+    """ou are HydroGPT, a high-precision research assistant for hydro-climate data.
 
 Rules:
-1) Use ONLY the provided evidence blocks.
-2) Do not invent facts, numeric values, years, or acronyms.
-3) Rewrite in clear academic language; do not paste long raw chunks.
-4) If evidence is insufficient or ambiguous, say that explicitly.
-5) For numeric questions, preserve exact values and units from evidence.
+1) Every response MUST start with: "In context to the documents you have uploaded..."
+2) Be direct and technical. Provide the answer immediately without conversational filler.
+3) Use ONLY the provided evidence blocks.
+4) If the information is missing, say that expicitly instead of guessing.
+5) Maintain exact units (e.g., mm, days, °C) and scenario IDs (e.g., SSP585).
 
-Required output structure:
-Short answer:
-<2-4 sentence direct response>
+Response Structure:
+In context to the documents you have uploaded, [Direct Answer].
 
 Explanation:
-<1 short paragraph that explains why this answer follows from the evidence>
-
+[3-4 sentences explaining the technical context or how the value was derived].
 Evidence:
 - <bullet 1>
 - <bullet 2>
-- <bullet 3 if available>
 
 Sources: <comma-separated source filenames used>
 
@@ -701,7 +698,7 @@ def build_structured_fallback(question: str, chunks: List[Dict[str, Any]]) -> st
     sources = ", ".join(dict.fromkeys(item["source"] for item in ranked if item["source"]))
 
     return (
-        f"Short answer:\n{short_answer}\n\n"
+        f"Answer:\n{short_answer}\n\n"
         f"Explanation:\n{explanation}\n\n"
         f"Evidence:\n{evidence_lines}\n\n"
         f"Sources: {sources or 'unknown'}"
@@ -774,20 +771,47 @@ def render_sources(sources: List[Dict[str, str]], key_prefix: str) -> None:
 
 # -- Main ---------------------------------------------------------------------
 def main() -> None:
-    st.set_page_config(page_title="Mai-T GPT", page_icon=" ", layout="wide")
+    st.set_page_config(page_title="Target Specific HydroLLM", page_icon=" ", layout="wide")
 
     st.markdown(
         f"""
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Glacial+Indifference:wght@400;700&display=swap');
+       @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+        /* Keep text typography custom while preserving icon fonts. */
+        .stApp,
+        .stApp p,
+        .stApp label,
+        .stApp h1,
+        .stApp h2,
+        .stApp h3,
+        .stApp input,
+        .stApp textarea,
+        .stApp button {{
+            font-family: 'Montserrat', sans-serif !important;
+        }}
+
+
 
         .stApp {{
             background: linear-gradient(180deg, #090d16 0%, #0b111c 100%);
             font-family: 'Glacial Indifference', 'Segoe UI', sans-serif;
         }}
 
-        .stApp * {{
-            font-family: 'Glacial Indifference', 'Segoe UI', sans-serif;
+        .material-symbols-outlined,
+        .material-symbols-rounded,
+        .material-symbols-sharp,
+        [class*="material-symbols"] {{
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+            letter-spacing: normal !important;
+            text-transform: none !important;
+            display: inline-block !important;
+            white-space: nowrap !important;
+            direction: ltr !important;
+            line-height: 1 !important;
+            -webkit-font-smoothing: antialiased !important;
         }}
 
         [data-testid="stSidebar"] {{
@@ -919,13 +943,20 @@ def main() -> None:
         }}
 
         div[data-testid="stTextInputRootElement"] input {{
-            border-radius: 18px !important;
+            div[data-testid="stTextInputRootElement"] {{
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }}
+
+        /* 2. Style the ACTUAL input area for a neat, unified look */
+        div[data-testid="stTextInputRootElement"] > div {{
+            background-color: #121826 !important;
             border: 1px solid {ACCENT_BLUE_BORDER} !important;
-            background: #121826 !important;
-            color: #eef4ff !important;
-            box-shadow: 0 10px 24px rgba(0,0,0,0.18) !important;
-            min-height: 3rem;
-            padding-left: 0.9rem !important;
+            border-radius: 18px !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important; /* Subtle, even shadow */
+            transition: border-color 0.2s ease-in-out;
+        }}
         }}
 
         div[data-testid="stFormSubmitButton"] button {{
@@ -962,7 +993,7 @@ def main() -> None:
     download_and_extract_index()
 
     with st.sidebar:
-        st.title("Mai-T GPT")
+        st.title("Target Specific HydroLLM")
         st.caption("Retrieval-grounded RAG assistant for hydro-climate PDFs")
         top_k = st.slider(
             "Chunks retrieved (Top-K)",
