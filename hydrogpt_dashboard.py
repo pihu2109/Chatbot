@@ -771,7 +771,7 @@ def render_sources(sources: List[Dict[str, str]], key_prefix: str) -> None:
 
 # -- Main ---------------------------------------------------------------------
 def main() -> None:
-    st.set_page_config(page_title="Target Specific HydroLLM", page_icon=" ", layout="wide")
+    st.set_page_config(page_title="Target Specific HydroGPT", page_icon=" ", layout="wide")
 
     st.markdown(
         f"""
@@ -993,7 +993,7 @@ def main() -> None:
     download_and_extract_index()
 
     with st.sidebar:
-        st.title("Target Specific HydroLLM")
+        st.title("Target Specific HydroGPT")
         st.caption("Retrieval-grounded RAG assistant for hydro-climate PDFs")
         top_k = st.slider(
             "Chunks retrieved (Top-K)",
